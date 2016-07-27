@@ -1,20 +1,21 @@
 # -*- encoding: utf-8 -*-
+from thefuck.utils import memoize, get_alias
 
 target_layout = '''qwertyuiop[]asdfghjkl;'zxcvbnm,./QWERTYUIOP{}ASDFGHJKL:"ZXCVBNM<>?'''
 
 source_layouts = [u'''йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,''',
-                  u'''ضصثقفغعهخحجچشسیبلاتنمکگظطزرذدپو./ًٌٍَُِّْ][}{ؤئيإأآة»«:؛كٓژٰ‌ٔء><؟''']
+                  u'''ضصثقفغعهخحجچشسیبلاتنمکگظطزرذدپو./ًٌٍَُِّْ][}{ؤئيإأآة»«:؛كٓژٰ‌ٔء><؟''',
+                  u''';ςερτυθιοπ[]ασδφγηξκλ΄ζχψωβνμ,./:΅ΕΡΤΥΘΙΟΠ{}ΑΣΔΦΓΗΞΚΛ¨"ΖΧΨΩΒΝΜ<>?''']
 
 
+@memoize
 def _get_matched_layout(command):
+    # don't use command.split_script here because a layout mismatch will likely
+    # result in a non-splitable sript as per shlex
+    cmd = command.script.split(' ')
     for source_layout in source_layouts:
-        if all([ch in source_layout or ch in '-_'
-                for ch in command.script.split(' ')[0]]):
+        if all([ch in source_layout or ch in '-_' for ch in cmd[0]]):
             return source_layout
-
-
-def match(command, settings):
-    return 'not found' in command.stderr and _get_matched_layout(command)
 
 
 def _switch(ch, layout):
@@ -24,7 +25,18 @@ def _switch(ch, layout):
         return ch
 
 
-def get_new_command(command, settings):
-    matched_layout = _get_matched_layout(command)
-    return ''.join(_switch(ch, matched_layout) for ch in command.script)
+def _switch_command(command, layout):
+    return ''.join(_switch(ch, layout) for ch in command.script)
 
+
+def match(command):
+    if 'not found' not in command.stderr:
+        return False
+    matched_layout = _get_matched_layout(command)
+    return matched_layout and \
+           _switch_command(command, matched_layout) != get_alias()
+
+
+def get_new_command(command):
+    matched_layout = _get_matched_layout(command)
+    return _switch_command(command, matched_layout)

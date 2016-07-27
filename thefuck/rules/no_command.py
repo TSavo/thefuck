@@ -1,30 +1,42 @@
 from difflib import get_close_matches
-import os
-from pathlib import Path
+from thefuck.utils import get_all_executables, \
+    get_valid_history_without_current, get_closest
+from thefuck.specific.sudo import sudo_support
 
 
-def _safe(fn, fallback):
-    try:
-        return fn()
-    except OSError:
-        return fallback
+@sudo_support
+def match(command):
+    return (command.script_parts
+            and 'not found' in command.stderr
+            and bool(get_close_matches(command.script_parts[0],
+                                       get_all_executables())))
 
 
-def _get_all_bins():
-    return [exe.name
-            for path in os.environ.get('PATH', '').split(':')
-            for exe in _safe(lambda: list(Path(path).iterdir()), [])
-            if not _safe(exe.is_dir, True)]
+def _get_used_executables(command):
+    for script in get_valid_history_without_current(command):
+        yield script.split(' ')[0]
 
 
-def match(command, settings):
-    return 'not found' in command.stderr and \
-           bool(get_close_matches(command.script.split(' ')[0],
-                                  _get_all_bins()))
+@sudo_support
+def get_new_command(command):
+    old_command = command.script_parts[0]
+
+    # One from history:
+    already_used = get_closest(
+        old_command, _get_used_executables(command),
+        fallback_to_first=False)
+    if already_used:
+        new_cmds = [already_used]
+    else:
+        new_cmds = []
+
+    # Other from all executables:
+    new_cmds += [cmd for cmd in get_close_matches(old_command,
+                                                  get_all_executables())
+                 if cmd not in new_cmds]
+
+    return [' '.join([new_command] + command.script_parts[1:])
+            for new_command in new_cmds]
 
 
-def get_new_command(command, settings):
-    old_command = command.script.split(' ')[0]
-    new_command = get_close_matches(old_command,
-                                    _get_all_bins())[0]
-    return ' '.join([new_command] + command.script.split(' ')[1:])
+priority = 3000
